@@ -20,7 +20,18 @@ pre-commit = "^3.6.0"
 accelerate = "^0.25.0"
 bitsandbytes = "^0.41.3.post2"
 scipy = "^1.11.4"
-label-studio = "^1.10.0.post0"
+trafilatura = {extras = ["all"], version = "^1.7.0"}
+langchain = "^0.1.11"
+fastapi = "^0.110.0"
+uvicorn = "^0.28.0"
+qdrant-client = "^1.8.0"
+langserve = {extras = ["all"], version = "^0.0.47"}
+langchain-community = "^0.0.27"
+sentence-transformers = "^2.5.1"
+chromadb = "^0.4.24"
+aiogram = "^3.4.1"
+openai = "^1.14.3"
+nltk = "^3.8.1"
 
 
 [build-system]

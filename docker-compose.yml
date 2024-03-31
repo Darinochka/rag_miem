@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  telegram:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    networks:
+      - intra
+    command: python3 -m src.servers.telegram_server
+
+
+  retriever:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 8001:8000
+    volumes:
+      - ./data/ready:/data
+    env_file:
+      - .env
+    networks:
+      - intra
+    command: python3 -m src.servers.retriever_server
+
+networks:
+  intra:
