@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 import logging
 import os
-from typing import List
+from typing import List, Any
 
 import pandas as pd
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import (
-    CharacterTextSplitter,
-    NLTKTextSplitter,
     RecursiveCharacterTextSplitter,
-    SpacyTextSplitter,
 )
+from langchain.docstore.document import Document
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,9 +19,9 @@ logger = logging.getLogger(__name__)
 def create_documents(
     folder: str,
     target_column: str = "text",
-    chunk_size: str = 300,
-    chunk_overlap: str = 30,
-):
+    chunk_size: int = 300,
+    chunk_overlap: int = 30,
+) -> Any:
     raw_docs = []
     for filename in os.listdir(folder):
         csv_path = os.path.join(folder, filename)
@@ -55,14 +53,14 @@ def create_documents(
 
 def create_hf_embeddings_model(
     model_name: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-):
+) -> HuggingFaceEmbeddings:
     return HuggingFaceEmbeddings(model_name=model_name)
 
 
 def create_db(
-    documents: List[str],
+    documents: List[Document],
     embeddings_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-):
+) -> Chroma:
     embeddings = HuggingFaceEmbeddings(model_name=embeddings_model)
     logger.info(f"Embedding model {embeddings}")
 
@@ -77,6 +75,6 @@ def create_db(
     return db
 
 
-def get_similar_docs(query: str, db: Chroma):
+def get_similar_docs(query: str, db: Chroma) -> Any:
     docs = db.similarity_search(query)
     return docs

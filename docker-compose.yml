@@ -16,7 +16,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - 8001:8000
+      - 8000:8000
     volumes:
       - ./data/ready:/data
     env_file:
