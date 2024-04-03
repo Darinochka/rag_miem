@@ -3,7 +3,9 @@ from peft import PeftConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoTokenizer
 
 
-def main(peft_model_id: str = typer.Option(default="results"), model_type: str = "t5"):
+def main(
+    peft_model_id: str = typer.Option(default="results"), model_type: str = "t5"
+) -> None:
     config = PeftConfig.from_pretrained(peft_model_id)
 
     if model_type == "gpt":
@@ -29,7 +31,7 @@ def main(peft_model_id: str = typer.Option(default="results"), model_type: str =
             print(temperature)
             rp = float(input("Enter a repetition penalty: "))
             print(rp)
-        except:
+        except BaseException:
             continue
         if model_type == "t5":
             text = f"<LM>Студент: {prompt}\nАссистент: "

@@ -1,23 +1,23 @@
 import logging
 import os
-from typing import Any, Dict, Hashable
+from typing import Any, Dict
 from uuid import uuid4
 
 import typer
-from datasets import Dataset, concatenate_datasets, load_dataset
+from datasets import concatenate_datasets, load_dataset
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_int8_training
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    GPT2Tokenizer,
     Trainer,
     TrainingArguments,
+    BatchEncoding,
 )
 
 os.environ["WANDB_PROJECT"] = "miem-llm"
 
 
-def get_data(filename: str) -> Dict[Hashable, Dict[int, str]]:
+def get_data(filename: str) -> Any:
     logging.info(f"Getting dataset with name {filename}")
 
     dataset = load_dataset("csv", data_files=filename)
@@ -27,7 +27,9 @@ def get_data(filename: str) -> Dict[Hashable, Dict[int, str]]:
     return dataset
 
 
-def tokenize_gpt(tokenizer, prompt, max_length: int):
+def tokenize_gpt(
+    tokenizer: AutoTokenizer, prompt: str, max_length: int
+) -> BatchEncoding:
     tokenizer.padding_side = "right"
     tokenized = tokenizer(
         prompt,
@@ -51,7 +53,9 @@ def tokenize_gpt(tokenizer, prompt, max_length: int):
     return tokenized
 
 
-def preprocess_for_alpaca(example, tokenizer, max_length: int):
+def preprocess_for_alpaca(
+    example: Dict[str, str], tokenizer: AutoTokenizer, max_length: int
+) -> BatchEncoding:
     question = f"Студент: {example['instruction']} {example['input']}\nАссистент: "
     answer = example["output"] + "</s>"
     prompt = question + answer
@@ -59,7 +63,9 @@ def preprocess_for_alpaca(example, tokenizer, max_length: int):
     return tokenize_gpt(tokenizer, prompt, max_length=max_length)
 
 
-def preprocess_for_miem(example, tokenizer, max_length: int):
+def preprocess_for_miem(
+    example: Dict[str, str], tokenizer: AutoTokenizer, max_length: int
+) -> BatchEncoding:
     question = f"Студент: {example['question']}\nАссистент: "
     answer = example["answer"] + "</s>"
     prompt = question + answer
@@ -79,7 +85,7 @@ def main(
     lora_dropout: float = typer.Option(default=0.05),
     context: int = typer.Option(default=512),
     prefix: str = typer.Option(default=""),
-):
+) -> None:
     model = AutoModelForCausalLM.from_pretrained(model_name, load_in_8bit=lora)
     tokenizer = AutoTokenizer.from_pretrained(model_name, eos_token_id=2)
 

@@ -1,23 +1,23 @@
 import logging
 import os
-from typing import Any, Dict, Hashable
+from typing import Any, Dict
 from uuid import uuid4
 
 import typer
-from datasets import Dataset, concatenate_datasets, load_dataset
+from datasets import concatenate_datasets, load_dataset
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_int8_training
 from transformers import (
     AutoTokenizer,
-    GPT2Tokenizer,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
     T5ForConditionalGeneration,
+    BatchEncoding,
 )
 
 os.environ["WANDB_PROJECT"] = "miem-llm"
 
 
-def get_data(filename: str) -> Dict[Hashable, Dict[int, str]]:
+def get_data(filename: str) -> Any:
     logging.info(f"Getting dataset with name {filename}")
 
     dataset = load_dataset("csv", data_files=filename)
@@ -28,8 +28,11 @@ def get_data(filename: str) -> Dict[Hashable, Dict[int, str]]:
 
 
 def preprocess_for_alpaca(
-    example, tokenizer, prefix: str = "<LM>", max_length: int = 512
-):
+    example: Dict[str, str],
+    tokenizer: AutoTokenizer,
+    prefix: str = "<LM>",
+    max_length: int = 512,
+) -> BatchEncoding:
     question = f"Студент: {example['instruction']} {example['input']}\nАссистент: "
     answer = example["output"] + "</s>"
 
@@ -37,15 +40,20 @@ def preprocess_for_alpaca(
 
 
 def preprocess_for_miem(
-    example, tokenizer, preifx: str = "<LM>", max_length: int = 512
-):
+    example: Dict[str, str],
+    tokenizer: AutoTokenizer,
+    prefix: str = "<LM>",
+    max_length: int = 512,
+) -> BatchEncoding:
     question = f"Студент: {example['question']}\nАссистент: "
     answer = example["answer"] + "</s>"
 
     return tokenize_t5(tokenizer, question, answer, max_length=max_length)
 
 
-def tokenize_t5(tokenizer, question, answer, max_length: int):
+def tokenize_t5(
+    tokenizer: AutoTokenizer, question: str, answer: str, max_length: int
+) -> BatchEncoding:
     tokenized = tokenizer(
         question,
         add_special_tokens=True,
@@ -86,7 +94,7 @@ def main(
     lora_alpha: int = typer.Option(default=16),
     lora_dropout: float = typer.Option(default=0.05),
     prefix: str = typer.Option(default=""),
-):
+) -> None:
     model = T5ForConditionalGeneration.from_pretrained(model_name, load_in_8bit=lora)
     tokenizer = AutoTokenizer.from_pretrained(model_name, eos_token_id=2)
 
