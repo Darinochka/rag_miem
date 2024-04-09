@@ -12,7 +12,7 @@ def retrieve_documents(question: str) -> Any:
     if response.status_code == 200:
         return response.json()["output"]
     else:
-        return [{"page_content": "Ошибка запроса"}] * 4
+        raise Exception(f"Ошибка: {response.status_code}")
 
 
 def rerank_documents(query: str, docs: List[Document]) -> List[Document]:
@@ -23,7 +23,7 @@ def rerank_documents(query: str, docs: List[Document]) -> List[Document]:
     if response.status_code == 200:
         return [doc["page_content"] for doc in response.json()["reranked_docs"]]
     else:
-        return [doc["page_content"] for doc in docs]
+        raise Exception(f"Ошибка: {response.status_code}")
 
 
 def process_csv(input_csv: str, output_csv: str, rerank: bool = False) -> None:

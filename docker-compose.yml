@@ -21,6 +21,7 @@ services:
       - ./data/ready:/data
     env_file:
       - .env
+      - .env.override
     networks:
       - intra
     command: python3 -m src.servers.retriever_server
