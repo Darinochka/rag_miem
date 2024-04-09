@@ -7,7 +7,7 @@ from aiogram.types import Message
 from openai import OpenAI
 from typing import Any
 
-from src.servers.env_args import TelegramArgs
+from src.servers.base_models import TelegramArgs
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
