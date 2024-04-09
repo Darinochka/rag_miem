@@ -6,7 +6,7 @@ from typing import List, Any, Tuple, Dict
 import pandas as pd
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
@@ -57,25 +57,23 @@ def create_db(
     documents: List[Document],
     embeddings_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
     normalize_embeddings: bool = False,
-) -> Chroma:
+) -> FAISS:
     embeddings = HuggingFaceEmbeddings(
         model_name=embeddings_model,
         encode_kwargs={"normalize_embeddings": normalize_embeddings},
     )
     logger.info(f"Embedding model {embeddings}")
 
-    db = Chroma.from_documents(
+    db = FAISS.from_documents(
         documents,
         embeddings,
-        # persist_directory="chroma",
-        # url=host,
     )
     logger.info(f"Db created f{db}")
 
     return db
 
 
-def get_similar_docs(query: str, db: Chroma) -> Any:
+def get_similar_docs(query: str, db: FAISS) -> Any:
     docs = db.similarity_search(query)
     return docs
 

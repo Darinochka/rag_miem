@@ -79,14 +79,14 @@ async def handle_message(message: Message) -> None:
             context=page_content,
             query=query,
             generator_host=args.generator_host,
-            model_name=args.model_name,
+            model_name=args.llm,
         )
     elif args.generator_type == "openai":
         summary = await summarize_content_openai(
             context=page_content,
             query=query,
             client=client,
-            model_name=args.model_name,
+            model_name=args.llm,
         )
     else:
         raise ValueError(f"Неизвестный тип генератора: {args.generator_type}")
