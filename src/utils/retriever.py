@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 import logging
 import os
-from typing import List, Any
+from typing import List, Any, Tuple, Dict
 
 import pandas as pd
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
 from langchain.docstore.document import Document
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import torch
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,30 +53,64 @@ def create_documents(
     return documents
 
 
-def create_hf_embeddings_model(
-    model_name: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-) -> HuggingFaceEmbeddings:
-    return HuggingFaceEmbeddings(model_name=model_name)
-
-
 def create_db(
     documents: List[Document],
     embeddings_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-) -> Chroma:
-    embeddings = HuggingFaceEmbeddings(model_name=embeddings_model)
+    normalize_embeddings: bool = False,
+) -> FAISS:
+    embeddings = HuggingFaceEmbeddings(
+        model_name=embeddings_model,
+        encode_kwargs={"normalize_embeddings": normalize_embeddings},
+    )
     logger.info(f"Embedding model {embeddings}")
 
-    db = Chroma.from_documents(
+    db = FAISS.from_documents(
         documents,
         embeddings,
-        # persist_directory="chroma",
-        # url=host,
     )
     logger.info(f"Db created f{db}")
 
     return db
 
 
-def get_similar_docs(query: str, db: Chroma) -> Any:
+def get_similar_docs(query: str, db: FAISS) -> Any:
     docs = db.similarity_search(query)
     return docs
+
+
+def create_reranker(
+    reranker_model: str,
+) -> Tuple[AutoTokenizer, AutoModelForSequenceClassification]:
+    tokenizer = AutoTokenizer.from_pretrained(reranker_model)
+    model = AutoModelForSequenceClassification.from_pretrained(reranker_model)
+    model.eval()
+
+    return tokenizer, model
+
+
+def get_reranked_docs(
+    query: str,
+    docs: List[Dict[str, Any]],
+    tokenizer: AutoTokenizer,
+    model: AutoModelForSequenceClassification,
+    max_length: int = 512,
+) -> List[Dict[str, Any]]:
+    pairs = [[query, doc["page_content"]] for doc in docs]
+
+    with torch.no_grad():
+        inputs = tokenizer(
+            pairs,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+            max_length=max_length,
+        )
+        scores = model(**inputs, return_dict=True).logits.squeeze().tolist()
+
+    for doc, score in zip(docs, scores):
+        doc["score"] = score
+
+    # Sort documents by their scores in descending order
+    sorted_docs = sorted(docs, key=lambda x: x["score"], reverse=True)
+
+    return sorted_docs

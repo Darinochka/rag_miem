@@ -21,20 +21,21 @@ accelerate = "^0.25.0"
 bitsandbytes = "^0.41.3.post2"
 scipy = "^1.11.4"
 trafilatura = {extras = ["all"], version = "^1.7.0"}
-langchain = "^0.1.11"
+langchain = "0.1.14"
 fastapi = "^0.110.0"
 uvicorn = "^0.28.0"
 qdrant-client = "^1.8.0"
 langserve = {extras = ["all"], version = "^0.0.47"}
-langchain-community = "^0.0.27"
+langchain-community = "0.0.30"
 sentence-transformers = "^2.5.1"
-chromadb = "^0.4.24"
 aiogram = "^3.4.1"
 openai = "^1.14.3"
 nltk = "^3.8.1"
 types-requests = "^2.31.0.20240311"
 requests = "^2.31.0"
 mypy = "^1.9.0"
+pydantic-settings = "^2.2.1"
+faiss-cpu = "^1.8.0"
 
 [tool.ruff]
 line-length = 88
@@ -48,8 +49,24 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.mypy]
-strict = true
-disallow_untyped_decorators = false
+plugins = [
+  "pydantic.mypy"
+]
+
+follow_imports = "silent"
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_reexport = true
+disallow_untyped_defs = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+
 
 [build-system]
 requires = ["poetry-core"]
