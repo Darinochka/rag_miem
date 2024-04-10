@@ -19,9 +19,9 @@ class TelegramArgs(BaseSettings):
 class RetrieverArgs(BaseSettings):
     data_folder: str = "/data"
     target_field: str = "text"
-    chunk_size: int = 300
-    chunk_overlap: int = 30
-    embedding_model: str = "ai-forever/ruBert-base"
+    chunk_size: int = 700
+    chunk_overlap: int = 200
+    embedding_model: str = "BAAI/bge-m3"
     retriever_host: str = "0.0.0.0"
     retriever_port: int = 8000
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
