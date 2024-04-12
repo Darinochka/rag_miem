@@ -20,15 +20,13 @@ services:
     volumes:
       - ./data/ready:/data
       - ~/.cache/huggingface/hub:/.cache/huggingface/hub
+      - ./data/faiss_indexes:/faiss_indexes
     environment:
       - HF_HOME=/.cache/huggingface/hub
       - HUGGINGFACE_HUB_CACHE=/.cache/huggingface/hub
-    env_file:
-      - .env
-      - .env.override
     networks:
       - intra
-    command: python3 -m src.servers.retriever_server
+    command: python3 -m src.servers.retriever_server --port 8000 --db-load-folder /faiss_indexes
 
 networks:
   intra:
