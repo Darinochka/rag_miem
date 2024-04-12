@@ -1,49 +1,70 @@
 from fastapi import FastAPI
 from langserve import add_routes
-import src.utils.retriever as retriever_utils
-from src.servers.base_models import RetrieverArgs
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import CrossEncoderReranker
-from langchain_community.cross_encoders import HuggingFaceCrossEncoder
-import logging
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+from src.utils.retriever import create_documents, Retriever
+from src.utils.base_models import RetrieverArgs
+import toml
+from typing import Dict, Any, Optional
+import uvicorn
+import argparse
+from langchain_core.retrievers import BaseRetriever
+from argparse import Namespace
 
 
-args = RetrieverArgs()
-documents = retriever_utils.create_documents(
-    folder=args.data_folder,
-    target_column=args.target_field,
-    chunk_size=args.chunk_size,
-    chunk_overlap=args.chunk_overlap,
-)
-retriever = retriever_utils.create_db(
-    documents, embeddings_model=args.embedding_model, normalize_embeddings=False
-).as_retriever()
+def load_config() -> Dict[str, Any]:
+    """Load configuration from TOML file located in src/servers."""
+    return toml.load("src/servers/config.toml")
 
-model = HuggingFaceCrossEncoder(model_name=args.reranker_model)
-compressor = CrossEncoderReranker(model=model, top_n=4)
-compression_retriever = ContextualCompressionRetriever(
-    base_compressor=compressor, base_retriever=retriever
-)
 
-# retriever = compression_retriever.as_retriever()
+def initialize_components(
+    config: Dict[str, Any], db_load_folder: Optional[str] = None
+) -> Retriever:
+    if db_load_folder is None:
+        documents = create_documents(**config["documents"])
+    else:
+        documents = None
 
-app = FastAPI(
-    title="LangChain Server",
-    version="1.0",
-    description="Spin up a simple api server using Langchain's Runnable interfaces",
-)
+    args = RetrieverArgs(**config["retriever"])
+    return Retriever(documents=documents, args=args, db_load_folder=db_load_folder)
 
-# Adds routes to the app for using the retriever under:
-# /invoke
-# /batch
-# /stream
-add_routes(app, compression_retriever)
+
+def create_app(retriever: BaseRetriever) -> FastAPI:
+    app = FastAPI(
+        title="LangChain Server",
+        version="1.0",
+        description="Spin up a simple api server using Langchain's Runnable interfaces",
+    )
+    add_routes(app, retriever)
+    return app
+
+
+def parse_args() -> Namespace:
+    parser = argparse.ArgumentParser(description="Run the LangChain server")
+    parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="Host for the FastAPI server"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port for the FastAPI server"
+    )
+    parser.add_argument(
+        "--db-load-folder", type=str, default=None, help="Folder to load FAISS DB from"
+    )
+    parser.add_argument(
+        "--db-save-folder", type=str, default=None, help="Folder to save FAISS DB to"
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    config = load_config()
+    retriever = initialize_components(config, args.db_load_folder)
+
+    if args.db_save_folder is not None:
+        retriever.save_db(args.db_save_folder)
+
+    app = create_app(retriever.retriever)
+    uvicorn.run(app, host=args.host, port=args.port)
+
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host=args.retriever_host, port=args.retriever_port)
+    main()

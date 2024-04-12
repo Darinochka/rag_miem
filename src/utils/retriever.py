@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import logging
 import os
-from typing import List, Any, Tuple, Dict
+from typing import List, Any, Optional
 
 import pandas as pd
 from langchain_community.document_loaders import DataFrameLoader
@@ -11,11 +11,74 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
 from langchain.docstore.document import Document
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-import torch
+from src.utils.base_models import RetrieverArgs
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import CrossEncoderReranker
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class Retriever:
+    def __init__(
+        self,
+        documents: Optional[List[Document]],
+        args: RetrieverArgs,
+        db_load_folder: Optional[str] = None,
+    ):
+        self.args = args
+        self._create_embedding_model(
+            model_name=self.args.embedding_model,
+            normalize_embeddings=self.args.normalize_embeddings,
+        )
+
+        if db_load_folder is None:
+            self.create_db(documents)
+        else:
+            self.load_db(db_load_folder)
+
+        self.retriever = self.db.as_retriever()
+
+        if self.args.rerank_model is not None:
+            self.base_retriever = self.retriever
+            self.retriever = self._add_rerank(self.args.rerank_model)
+            logger.info(f"Reranking added {self.retriever}")
+
+    def _create_embedding_model(
+        self, model_name: str, normalize_embeddings: bool = False
+    ) -> HuggingFaceEmbeddings:
+        self.embedding_model = HuggingFaceEmbeddings(
+            model_name=model_name,
+            encode_kwargs={"normalize_embeddings": normalize_embeddings},
+        )
+        logger.info(f"Embedding model {self.embedding_model}")
+
+    def load_db(self, folder: str) -> None:
+        self.db = FAISS.load_local(
+            folder, self.embedding_model, allow_dangerous_deserialization=True
+        )
+        logger.info(f"Db loaded {self.db}")
+
+    def create_db(self, documents: Optional[List[Document]]) -> None:
+        self.db = FAISS.from_documents(
+            documents,
+            self.embedding_model,
+        )
+        logger.info(f"Db created {self.db}")
+
+    def save_db(self, folder: str) -> None:
+        self.db.save_local(folder)
+        logger.info(f"Db saved to {folder}")
+
+    def _add_rerank(
+        self, model_name: str, top_n: int = 4
+    ) -> ContextualCompressionRetriever:
+        model = HuggingFaceCrossEncoder(model_name=model_name)
+        compressor = CrossEncoderReranker(model=model, top_n=top_n)
+        return ContextualCompressionRetriever(
+            base_compressor=compressor, base_retriever=self.base_retriever
+        )
 
 
 def create_documents(
@@ -25,6 +88,9 @@ def create_documents(
     chunk_overlap: int = 30,
 ) -> Any:
     raw_docs = []
+    logger.info(
+        f"folder: {folder} target_column: {target_column} chunk_size: {chunk_size} chunk_overlap: {chunk_overlap}"
+    )
     for filename in os.listdir(folder):
         csv_path = os.path.join(folder, filename)
         if not os.path.isfile(csv_path):
@@ -51,66 +117,3 @@ def create_documents(
     logger.info(f"Len of the documents after splitting {len(documents)}")
 
     return documents
-
-
-def create_db(
-    documents: List[Document],
-    embeddings_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-    normalize_embeddings: bool = False,
-) -> FAISS:
-    embeddings = HuggingFaceEmbeddings(
-        model_name=embeddings_model,
-        encode_kwargs={"normalize_embeddings": normalize_embeddings},
-    )
-    logger.info(f"Embedding model {embeddings}")
-
-    db = FAISS.from_documents(
-        documents,
-        embeddings,
-    )
-    logger.info(f"Db created f{db}")
-
-    return db
-
-
-def get_similar_docs(query: str, db: FAISS) -> Any:
-    docs = db.similarity_search(query)
-    return docs
-
-
-def create_reranker(
-    reranker_model: str,
-) -> Tuple[AutoTokenizer, AutoModelForSequenceClassification]:
-    tokenizer = AutoTokenizer.from_pretrained(reranker_model)
-    model = AutoModelForSequenceClassification.from_pretrained(reranker_model)
-    model.eval()
-
-    return tokenizer, model
-
-
-def get_reranked_docs(
-    query: str,
-    docs: List[Dict[str, Any]],
-    tokenizer: AutoTokenizer,
-    model: AutoModelForSequenceClassification,
-    max_length: int = 512,
-) -> List[Dict[str, Any]]:
-    pairs = [[query, doc["page_content"]] for doc in docs]
-
-    with torch.no_grad():
-        inputs = tokenizer(
-            pairs,
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-            max_length=max_length,
-        )
-        scores = model(**inputs, return_dict=True).logits.squeeze().tolist()
-
-    for doc, score in zip(docs, scores):
-        doc["score"] = score
-
-    # Sort documents by their scores in descending order
-    sorted_docs = sorted(docs, key=lambda x: x["score"], reverse=True)
-
-    return sorted_docs
