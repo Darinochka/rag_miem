@@ -4,7 +4,18 @@ import os
 from typing import List, Any, Optional
 
 import pandas as pd
-from langchain_community.document_loaders import DataFrameLoader
+from langchain_community.document_loaders import (
+    DataFrameLoader,
+    EverNoteLoader,
+    PDFMinerLoader,
+    TextLoader,
+    UnstructuredEPubLoader,
+    UnstructuredHTMLLoader,
+    UnstructuredMarkdownLoader,
+    UnstructuredODTLoader,
+    UnstructuredPowerPointLoader,
+    UnstructuredWordDocumentLoader,
+)
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import (
@@ -18,6 +29,20 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+LOADER_MAPPING = {
+    ".doc": (UnstructuredWordDocumentLoader, {}),
+    ".docx": (UnstructuredWordDocumentLoader, {}),
+    ".enex": (EverNoteLoader, {}),
+    ".epub": (UnstructuredEPubLoader, {}),
+    ".html": (UnstructuredHTMLLoader, {}),
+    ".md": (UnstructuredMarkdownLoader, {}),
+    ".odt": (UnstructuredODTLoader, {}),
+    ".pdf": (PDFMinerLoader, {}),
+    ".ppt": (UnstructuredPowerPointLoader, {}),
+    ".pptx": (UnstructuredPowerPointLoader, {}),
+    ".txt": (TextLoader, {"encoding": "utf8"}),
+}
 
 
 class Retriever:
@@ -92,18 +117,26 @@ def create_documents(
         f"folder: {folder} target_column: {target_column} chunk_size: {chunk_size} chunk_overlap: {chunk_overlap}"
     )
     for filename in os.listdir(folder):
-        csv_path = os.path.join(folder, filename)
-        if not os.path.isfile(csv_path):
+        full_path = os.path.join(folder, filename)
+        if not os.path.isfile(full_path):
             continue
 
         logger.info(f"Process file {filename}...")
-        data = pd.read_csv(
-            csv_path,
-            sep=",",
-            quotechar='"',
-            # names=["title", "date", "id", "raw_text", "text", "type", "url"],
-        )
-        loader = DataFrameLoader(data, page_content_column=target_column)
+        ext = "." + filename.rsplit(".", 1)[-1]
+
+        if ext == ".csv":
+            data = pd.read_csv(
+                full_path,
+                sep=",",
+                quotechar='"',
+            )
+            loader = DataFrameLoader(data, page_content_column=target_column)
+        elif ext in LOADER_MAPPING:
+            loader_class, loader_args = LOADER_MAPPING[ext]
+            loader = loader_class(full_path, **loader_args)
+        else:
+            logger.warning(f"Unsupported file type {ext}, skipping...")
+            continue
         raw_docs.extend(loader.load())
 
     logger.info(f"Len of the documents before splitting {len(raw_docs)}")

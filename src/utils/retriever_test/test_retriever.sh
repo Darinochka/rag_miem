@@ -13,7 +13,7 @@ for EMBED in "${EMBEDS[@]}"; do
 
     echo "Выполнение скрипта python"
 
-    python3 -m src.utils.retriever_documents \
+    python3 -m src.utils.retriever_test.retriever_documents \
         --input_csv data/validation/test.csv \
         --output_csv data/out_retriever/CS_"$CHUNK_SIZE"_CO_"$CHUNK_OVERLAP"_q_rerank/"$PART".csv \
         --embedding_model $EMBED \
