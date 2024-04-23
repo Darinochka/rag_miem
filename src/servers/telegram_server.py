@@ -21,13 +21,7 @@ client = OpenAI(
     base_url=args.generator_host,
 )
 
-PROMPT_TEMPLATE = (
-    "На основе контекста ответь на вопрос. Не выдумывай, бери ответы ТОЛЬКО из контекста. "
-    # "Если в контексте нет ответа, ответь 'К сожалению, нет информации связанной с этим вопросом.'\n"
-    "Контекст:\n{context}\n"
-    "Вопрос:\n{query}\n"
-    "Ответ:\n"
-)
+PROMPT_TEMPLATE = "Контекст: {context}\n\nИспользуя контекст, ответь на вопрос: {query}"
 
 
 def retrieve_documents(query: str, retriever_host: str) -> Any:
