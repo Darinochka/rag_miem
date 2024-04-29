@@ -4,10 +4,11 @@ import logging
 import requests
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
-from openai import OpenAI
 from typing import Any
-
+import toml
 from src.utils.base_models import TelegramArgs
+import re
+from aiogram.filters import CommandStart, Command
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -16,12 +17,7 @@ logging.basicConfig(
 dp = Dispatcher()
 args = TelegramArgs()
 
-client = OpenAI(
-    api_key="dummy",
-    base_url=args.generator_host,
-)
-
-PROMPT_TEMPLATE = "Контекст: {context}\n\nИспользуя контекст, ответь на вопрос: {query}"
+CONFIG = toml.load("src/config.toml")
 
 
 def retrieve_documents(query: str, retriever_host: str) -> Any:
@@ -34,35 +30,51 @@ def retrieve_documents(query: str, retriever_host: str) -> Any:
     return res_json
 
 
-async def summarize_content_openai(
-    context: str, query: str, client: OpenAI, model_name: str
-) -> Any:
-    logging.info("Starting summarization with OpenAI")
-    prompt = PROMPT_TEMPLATE.format(context=context, query=query)
-    logging.debug(f"Prompt for OpenAI model: {prompt}")
-    response = client.completion.create(
-        model=model_name,
-        prompt=prompt,
-        max_tokens=150,
-    )
-    summary = response.choices[0].text.strip()
-    logging.debug(f"Summary from OpenAI model: {summary}")
-    logging.info("Summary was generated successfully")
-    return summary
-
-
 async def summarize_content_ollama(
     context: str, query: str, generator_host: str, model_name: str
 ) -> Any:
     logging.info("Starting summarization with ollama")
-    prompt = PROMPT_TEMPLATE.format(context=context, query=query)
+    prompt = CONFIG["telegram"]["prompt_template"].format(context=context, query=query)
     logging.debug(f"Prompt for ollama model: {prompt}")
     response = requests.post(
-        generator_host, json={"model": model_name, "stream": False, "prompt": prompt}
+        generator_host,
+        json={
+            "model": model_name,
+            "stream": False,
+            "prompt": prompt,
+            "options": {
+                "temperature": CONFIG["telegram"]["temperature"],
+                "repeat_penalty": CONFIG["telegram"]["repeat_penalty"],
+            },
+        },
     )
     logging.debug(f"Summary from ollama model: {response.json()['response']}")
     logging.info("Summary was generated successfully")
     return response.json()["response"]
+
+
+@dp.message(CommandStart())
+async def send_welcome(message: Message) -> None:
+    welcome_text = CONFIG["telegram"]["welcome_text"]
+    await message.answer(welcome_text)
+
+
+@dp.message(Command("which_building"))
+async def which_building(message: Message) -> None:
+    text = message.text
+    room_number_match = re.search(r"\d+", text)
+    if room_number_match:
+        room_number = int(room_number_match.group(0))
+        if room_number in CONFIG["telegram"]["study_rooms"]:
+            response = f"Аудитория {room_number} находится в учебном корпусе."
+        elif 0 < room_number < 800:
+            response = f"Аудитория {room_number} находится в административном корпусе."
+        else:
+            response = f"Аудитория {room_number} не найдена."
+    else:
+        response = "Не удалось распознать номер аудитории. Пожалуйста, укажите команду в формате '/which_building <номер аудитории>'."
+
+    await message.reply(response)
 
 
 @dp.message(F.text)
@@ -70,25 +82,17 @@ async def handle_message(message: Message) -> None:
     query = message.text
 
     documents = retrieve_documents(query, args.retriever_host)
-    page_content = "\n\n".join([doc["page_content"] for doc in documents["output"]])
+    page_content = ""
+    for doc in documents["output"]:
+        page_content += f"{doc['page_content']}\n\n"
     logging.debug(f"Documents: {page_content}")
 
-    if args.generator_type == "ollama":
-        summary = await summarize_content_ollama(
-            context=page_content,
-            query=query,
-            generator_host=args.generator_host,
-            model_name=args.llm_name,
-        )
-    elif args.generator_type == "openai":
-        summary = await summarize_content_openai(
-            context=page_content,
-            query=query,
-            client=client,
-            model_name=args.llm_name,
-        )
-    else:
-        raise ValueError(f"Unknown the type of the generator: {args.generator_type}")
+    summary = await summarize_content_ollama(
+        context=page_content,
+        query=query,
+        generator_host=args.generator_host,
+        model_name=args.llm_name,
+    )
     await message.answer(summary)
 
 
