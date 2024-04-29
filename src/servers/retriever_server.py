@@ -11,8 +11,8 @@ from argparse import Namespace
 
 
 def load_config() -> Dict[str, Any]:
-    """Load configuration from TOML file located in src/servers."""
-    return toml.load("src/servers/config.toml")
+    """Load configuration from TOML file located in root folder."""
+    return toml.load("src/config.toml")
 
 
 def initialize_components(
