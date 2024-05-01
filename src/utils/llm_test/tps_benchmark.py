@@ -3,7 +3,9 @@ import asyncio
 import csv
 import logging
 import requests
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import openai
+from src.utils.llm_test.llm_answer import SYSTEM_PROMPTS
 
 # Set up basic configuration for logging
 logging.basicConfig(
@@ -31,42 +33,95 @@ async def summarize_content_ollama(
     return response.json()
 
 
+async def summarize_content_openai(
+    prompt: str,
+    client: openai.AsyncOpenAI,
+    model_name: str,
+    temperature: float,
+    repeat_penalty: float,
+) -> Dict[Any, Any]:
+    completion = await client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPTS[model_name]},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=temperature,
+        frequency_penalty=repeat_penalty - 1,
+    )
+    logging.debug(f"Summary from OpenAI model: {completion.choices[0].message.content}")
+    return completion
+
+
+async def tps_ollama(results: List[Dict[str, Any]]) -> float:
+    total_tps = 0
+    for response in results:
+        total_tps += response["eval_count"] / response["eval_duration"]
+    return total_tps / len(results) * 10**9
+
+
+async def tps_openai(host: str) -> Optional[float]:
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer no-key"}
+    host += "/metrics"
+    response = requests.get(host, headers=headers)
+    lines = response.text.split("\n")
+    predicted_tokens_seconds = None
+    for line in lines:
+        if "llamacpp:predicted_tokens_seconds" in line:
+            predicted_tokens_seconds = float(line.split()[-1])
+    return predicted_tokens_seconds
+
+
+async def process_model(
+    model_name: str, prompts: List[str], host: str, model_type: str, **kwargs: Any
+) -> Optional[float]:
+    tasks = []
+    if model_type == "ollama":
+        tasks = [
+            summarize_content_ollama(prompt, host, model_name, **kwargs)
+            for prompt in prompts
+        ]
+    elif model_type == "openai":
+        client = openai.AsyncOpenAI(base_url=host + "/v1", api_key="sk-...")
+        tasks = [
+            summarize_content_openai(prompt, client, model_name, **kwargs)
+            for prompt in prompts
+        ]
+
+    results = await asyncio.gather(*tasks)
+    if model_type == "ollama":
+        return await tps_ollama(results)
+    elif model_type == "openai":
+        return await tps_openai(host)
+    else:
+        return None
+
+
+async def generate_prompts(input_filename: str, prompt_template: str) -> List[str]:
+    with open(input_filename, mode="r", encoding="utf-8") as file:
+        csv_reader = csv.DictReader(file)
+        return [
+            prompt_template.format(
+                context=f"{row['Документ1']}\n\n{row['Документ2']}\n\n{row['Документ3']}\n\n{row['Документ4']}",
+                query=row["Вопрос"],
+            )
+            for row in csv_reader
+        ]
+
+
 async def calc_avg_tps(
     input_filename: str,
     prompt_template: str,
     model_names: List[str],
     host: str,
-    temperature: float,
-    repeat_penalty: float,
+    model_type: str,
+    **kwargs: Any,
 ) -> None:
+    prompts = await generate_prompts(input_filename, prompt_template)
     for model_name in model_names:
-        tasks = []
-        with open(input_filename, mode="r", encoding="utf-8") as file:
-            csv_reader = csv.DictReader(file)
-            for row in csv_reader:
-                context = f"{row['Документ1']}\n\n{row['Документ2']}\n\n{row['Документ3']}\n\n{row['Документ4']}"
-                query = row["Вопрос"]
-                prompt = prompt_template.format(context=context, query=query)
-                logging.debug(f"Prompt for {model_name} model: {prompt}")
-
-                tasks.append(
-                    summarize_content_ollama(
-                        prompt,
-                        host,
-                        model_name,
-                        temperature,
-                        repeat_penalty,
-                    )
-                )
-
-        results = await asyncio.gather(*tasks)
-
-        total_tps = 0
-        for response in results:
-            total_tps += response["eval_count"] / response["eval_duration"]
-
+        total_tps = await process_model(model_name, prompts, host, model_type, **kwargs)
         print(
-            f"{model_name},{repeat_penalty},{temperature},{total_tps / len(results) * 10**9}"
+            f"{model_name},{kwargs['repeat_penalty']},{kwargs['temperature']},{total_tps}"
         )
 
 
@@ -98,17 +153,19 @@ def main() -> None:
     parser.add_argument(
         "--repeat_penalty", type=float, required=True, help="repeat penalty to generate"
     )
+    parser.add_argument("--model_type", type=str, choices=["ollama", "openai"])
 
     args = parser.parse_args()
 
     asyncio.run(
         calc_avg_tps(
-            args.input_filename,
-            args.prompt_template,
-            args.model_names,
-            args.host,
-            args.temperature,
-            args.repeat_penalty,
+            input_filename=args.input_filename,
+            prompt_template=args.prompt_template,
+            model_names=args.model_names,
+            host=args.host,
+            model_type=args.model_type,
+            temperature=args.temperature,
+            repeat_penalty=args.repeat_penalty,
         )
     )
 
