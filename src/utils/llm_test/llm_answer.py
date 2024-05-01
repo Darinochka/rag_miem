@@ -5,11 +5,16 @@ import logging
 import requests
 import json
 from time import sleep
+import openai
+from typing import List, Tuple, Any, Dict
 
-# Set up basic configuration for logging
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+SYSTEM_PROMPTS = {
+    "/saiga-llama3-8b-q4/model-q4_K.gguf": "Ты — Сайга, русскоязычный автоматический ассистент. Ты разговариваешь с людьми и помогаешь им.",
+}
 
 
 async def summarize_content_yandex_gpt(
@@ -45,6 +50,28 @@ async def summarize_content_yandex_gpt(
     generated_text = response_json["result"]["alternatives"][0]["message"]["text"]
     logging.info("Summary was generated successfully")
     return generated_text
+
+
+async def summarize_content_openai(
+    prompt: str,
+    client: openai.AsyncOpenAI,
+    model_name: str,
+    temperature: float,
+    repeat_penalty: float,
+) -> str:
+    logging.info("Starting summarization with OpenAI")
+    completion = await client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPTS[model_name]},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=temperature,
+        repeat_penalty=repeat_penalty,
+    )
+    logging.debug(f"Summary from OpenAI model: {completion.choices[0].message.content}")
+    logging.info("Summary was generated successfully")
+    return completion.choices[0].message.content
 
 
 async def summarize_content_ollama(
@@ -102,6 +129,76 @@ async def summarize_content_gigachat(
     return response.json()["choices"][0]["message"]["content"]
 
 
+async def read_csv_and_generate_prompts(
+    input_filename: str, prompt_template: str
+) -> List[Tuple[Dict[str, Any], str]]:
+    prompts = []
+    with open(input_filename, mode="r", encoding="utf-8") as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            context = f"{row['Документ1']}\n\n{row['Документ2']}\n\n{row['Документ3']}\n\n{row['Документ4']}"
+            query = row["Вопрос"]
+            prompt = prompt_template.format(context=context, query=query)
+            prompts.append((row, prompt))
+    return prompts
+
+
+async def create_tasks(
+    prompts: List[Tuple[Dict[str, Any], str]],
+    model_name: str,
+    host: str,
+    model_type: str,
+    **kwargs: Any,
+) -> List[Any]:
+    tasks = []
+    for _, prompt in prompts:
+        if model_type == "ollama":
+            tasks.append(summarize_content_ollama(prompt, host, model_name, **kwargs))
+        elif model_type == "yandex_gpt":
+            tasks.append(summarize_content_yandex_gpt(prompt, model_name, **kwargs))
+        elif model_type == "gigachat":
+            tasks.append(summarize_content_gigachat(prompt, model_name, **kwargs))
+        elif model_type == "openai":
+            client = openai.AsyncOpenAI(base_url=host, api_key=kwargs["token"])
+            tasks.append(summarize_content_openai(prompt, client, model_name, **kwargs))
+        else:
+            raise ValueError(f"Unknown model type: {model_type}")
+    return tasks
+
+
+async def write_results_to_csv(
+    output_filename: str,
+    model_name: str,
+    prompts: List[Tuple[Dict[str, Any], str]],
+    results: List[str],
+    temperature: float,
+    repeat_penalty: float,
+    prompt_template: str,
+) -> None:
+    with open(output_filename, mode="w", newline="", encoding="utf-8") as file:
+        csv_writer = csv.writer(file)
+        header = [
+            "Вопрос",
+            "Документ1",
+            "Документ2",
+            "Документ3",
+            "Документ4",
+            f"{model_name}_t{temperature}_rp{repeat_penalty}_pt_{prompt_template}",
+        ]
+        csv_writer.writerow(header)
+        for (row, _), summary in zip(prompts, results):
+            csv_writer.writerow(
+                [
+                    row["Вопрос"],
+                    row["Документ1"],
+                    row["Документ2"],
+                    row["Документ3"],
+                    row["Документ4"],
+                    summary,
+                ]
+            )
+
+
 async def process_csv(
     input_filename: str,
     output_filename: str,
@@ -114,82 +211,27 @@ async def process_csv(
     folder_id: str,
     model_type: str,
 ) -> None:
-    tasks = []
-    with open(input_filename, mode="r", encoding="utf-8") as file:
-        csv_reader = csv.DictReader(file)
-        for row in csv_reader:
-            context = f"{row['Документ1']}\n\n{row['Документ2']}\n\n{row['Документ3']}\n\n{row['Документ4']}"
-            query = row["Вопрос"]
-            prompt = prompt_template.format(context=context, query=query)
-            logging.debug(f"Prompt for {model_type} model: {prompt}")
-
-            if model_type == "ollama":
-                tasks.append(
-                    summarize_content_ollama(
-                        prompt,
-                        host,
-                        model_name,
-                        temperature,
-                        repeat_penalty,
-                    )
-                )
-            elif model_type == "yandex_gpt":
-                logging.debug(f"Prompt for Yandex GPT: {prompt}")
-                tasks.append(
-                    summarize_content_yandex_gpt(
-                        prompt,
-                        model_name,
-                        temperature,
-                        folder_id,
-                        token,
-                    )
-                )
-            elif model_type == "gigachat":
-                tasks.append(
-                    summarize_content_gigachat(
-                        prompt,
-                        model_name,
-                        temperature,
-                        repeat_penalty,
-                        token,
-                    )
-                )
-            else:
-                raise ValueError(f"Unknown model type: {model_type}")
-
+    prompts = await read_csv_and_generate_prompts(input_filename, prompt_template)
+    tasks = await create_tasks(
+        prompts,
+        model_name,
+        host,
+        model_type,
+        temperature=temperature,
+        repeat_penalty=repeat_penalty,
+        token=token,
+        folder_id=folder_id,
+    )
     results = await asyncio.gather(*tasks)
-
-    with open(output_filename, mode="w", newline="", encoding="utf-8") as file:
-        csv_writer = csv.writer(file)
-        csv_writer.writerow(
-            [
-                "Вопрос",
-                "Документ1",
-                "Документ2",
-                "Документ3",
-                "Документ4",
-                f"{model_name}_t{temperature}_rp{repeat_penalty}_pt_{prompt_template}",
-            ]
-        )
-        for row, summary in zip(
-            [
-                row
-                for row in csv.DictReader(
-                    open(input_filename, mode="r", encoding="utf-8")
-                )
-            ],
-            results,
-        ):
-            csv_writer.writerow(
-                [
-                    row["Вопрос"],
-                    row["Документ1"],
-                    row["Документ2"],
-                    row["Документ3"],
-                    row["Документ4"],
-                    summary,
-                ]
-            )
+    await write_results_to_csv(
+        output_filename,
+        model_name,
+        prompts,
+        results,
+        temperature,
+        repeat_penalty,
+        prompt_template,
+    )
 
 
 def main() -> None:
@@ -235,7 +277,7 @@ def main() -> None:
         type=str,
         required=True,
         default="ollama",
-        choices=["ollama", "yandex_gpt", "gigachat"],
+        choices=["ollama", "yandex_gpt", "gigachat", "openai"],
         help="Type of the model to use",
     )
 
