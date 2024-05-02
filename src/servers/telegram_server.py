@@ -42,9 +42,11 @@ async def summarize_content_ollama(
             "model": model_name,
             "stream": False,
             "prompt": prompt,
+            "system": CONFIG["telegram"]["system_prompt"],
             "options": {
                 "temperature": CONFIG["telegram"]["temperature"],
                 "repeat_penalty": CONFIG["telegram"]["repeat_penalty"],
+                "num_predict": 2048,
             },
         },
     )
@@ -93,7 +95,10 @@ async def handle_message(message: Message) -> None:
         generator_host=args.generator_host,
         model_name=args.llm_name,
     )
-    await message.answer(summary)
+    if len(summary) > 4096:
+        await message.answer(summary[:4096])
+    else:
+        await message.answer(summary)
 
 
 async def main() -> None:
