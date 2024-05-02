@@ -19,7 +19,8 @@ async def summarize_content_yandex_gpt(
     model_name: str,
     temperature: float,
     folder_id: str,
-    iam_token: str,
+    token: str,
+    **kwargs: Any,
 ) -> str:
     logging.info("Starting summarization with Yandex GPT")
     sleep(20)  # yandeggpt не любит слишком частые запросы
@@ -42,7 +43,7 @@ async def summarize_content_yandex_gpt(
     }
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {iam_token}",
+        "Authorization": f"Bearer {token}",
         "x-folder-id": folder_id,
     }
     response = requests.post(
@@ -65,6 +66,7 @@ async def summarize_content_openai(
     model_name: str,
     temperature: float,
     repeat_penalty: float,
+    **kwargs: Any,
 ) -> str:
     logging.info("Starting summarization with OpenAI")
     if system_prompt is not None:
@@ -93,6 +95,7 @@ async def summarize_content_ollama(
     model_name: str,
     temperature: float,
     repeat_penalty: float,
+    **kwargs: Any,
 ) -> str:
     logging.info("Starting summarization with ollama")
 
@@ -117,7 +120,8 @@ async def summarize_content_gigachat(
     model_name: str,
     temperature: float,
     repeat_penalty: float,
-    auth_token: str,
+    token: str,
+    **kwargs: Any,
 ) -> str:
     logging.info("Starting summarization with gigachat")
     url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
@@ -140,7 +144,7 @@ async def summarize_content_gigachat(
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Authorization": f"Bearer {auth_token}",
+        "Authorization": f"Bearer {token}",
     }
 
     response = requests.request(
