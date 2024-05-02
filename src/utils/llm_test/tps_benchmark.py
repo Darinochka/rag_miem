@@ -5,7 +5,6 @@ import logging
 import requests
 from typing import Dict, Any, List, Optional
 import openai
-from src.utils.llm_test.llm_answer import SYSTEM_PROMPTS
 
 # Set up basic configuration for logging
 logging.basicConfig(
@@ -15,37 +14,45 @@ logging.basicConfig(
 
 async def summarize_content_ollama(
     prompt: str,
+    system_prompt: Optional[str],
     generator_host: str,
     model_name: str,
     temperature: float,
     repeat_penalty: float,
 ) -> Dict[Any, Any]:
-    response = requests.post(
-        generator_host,
-        json={
-            "model": model_name,
-            "stream": False,
-            "prompt": prompt,
-            "options": {"temperature": temperature, "repeat_penalty": repeat_penalty},
-        },
-    )
+    json_data = {
+        "model": model_name,
+        "stream": False,
+        "prompt": prompt,
+        "options": {"temperature": temperature, "repeat_penalty": repeat_penalty},
+    }
+    if system_prompt is not None:
+        json_data["system"] = system_prompt
+
+    response = requests.post(generator_host, json=json_data)
     logging.debug(f"Summary from ollama model: {response.json()}")
     return response.json()
 
 
 async def summarize_content_openai(
     prompt: str,
+    system_prompt: Optional[str],
     client: openai.AsyncOpenAI,
     model_name: str,
     temperature: float,
     repeat_penalty: float,
 ) -> Dict[Any, Any]:
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+    else:
+        messages = [{"role": "user", "content": prompt}]
+
     completion = await client.chat.completions.create(
         model=model_name,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPTS[model_name]},
-            {"role": "user", "content": prompt},
-        ],
+        messages=messages,
         temperature=temperature,
         frequency_penalty=repeat_penalty - 1,
     )
@@ -73,18 +80,25 @@ async def tps_openai(host: str) -> Optional[float]:
 
 
 async def process_model(
-    model_name: str, prompts: List[str], host: str, model_type: str, **kwargs: Any
+    model_name: str,
+    prompts: List[str],
+    system_prompt: Optional[str],
+    host: str,
+    model_type: str,
+    **kwargs: Any,
 ) -> Optional[float]:
     tasks = []
     if model_type == "ollama":
         tasks = [
-            summarize_content_ollama(prompt, host, model_name, **kwargs)
+            summarize_content_ollama(prompt, system_prompt, host, model_name, **kwargs)
             for prompt in prompts
         ]
     elif model_type == "openai":
         client = openai.AsyncOpenAI(base_url=host + "/v1", api_key="sk-...")
         tasks = [
-            summarize_content_openai(prompt, client, model_name, **kwargs)
+            summarize_content_openai(
+                prompt, system_prompt, client, model_name, **kwargs
+            )
             for prompt in prompts
         ]
 
@@ -112,6 +126,7 @@ async def generate_prompts(input_filename: str, prompt_template: str) -> List[st
 async def calc_avg_tps(
     input_filename: str,
     prompt_template: str,
+    system_prompt: Optional[str],
     model_names: List[str],
     host: str,
     model_type: str,
@@ -119,7 +134,9 @@ async def calc_avg_tps(
 ) -> None:
     prompts = await generate_prompts(input_filename, prompt_template)
     for model_name in model_names:
-        total_tps = await process_model(model_name, prompts, host, model_type, **kwargs)
+        total_tps = await process_model(
+            model_name, prompts, system_prompt, host, model_type, **kwargs
+        )
         print(
             f"{model_name},{kwargs['repeat_penalty']},{kwargs['temperature']},{total_tps}"
         )
@@ -137,6 +154,12 @@ def main() -> None:
         required=True,
         type=str,
         help="Template for prompt creation",
+    )
+    parser.add_argument(
+        "--system_prompt",
+        type=str,
+        default=None,
+        help="System prompt for the model",
     )
     parser.add_argument(
         "--model_names", required=True, type=str, nargs="+", help="Model names for LLM"
@@ -161,6 +184,7 @@ def main() -> None:
         calc_avg_tps(
             input_filename=args.input_filename,
             prompt_template=args.prompt_template,
+            system_prompt=args.system_prompt,
             model_names=args.model_names,
             host=args.host,
             model_type=args.model_type,
