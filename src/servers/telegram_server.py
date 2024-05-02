@@ -155,7 +155,7 @@ async def ollama_request(
             if full_response_stripped == "":
                 continue
 
-            if i == 5:
+            if i == 35 or response_data.get("done"):
                 if sent_message:
                     if last_sent_text != full_response_stripped:
                         await bot.edit_message_text(
