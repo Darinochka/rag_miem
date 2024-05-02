@@ -9,6 +9,11 @@ import toml
 from src.utils.base_models import TelegramArgs
 import re
 from aiogram.filters import CommandStart, Command
+from aiogram.enums import ParseMode
+import aiogram.types as types
+import aiohttp
+import json
+from typing import Dict, AsyncGenerator
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -16,7 +21,7 @@ logging.basicConfig(
 
 dp = Dispatcher()
 args = TelegramArgs()
-
+bot = Bot(args.token)
 CONFIG = toml.load("src/config.toml")
 
 
@@ -79,9 +84,17 @@ async def which_building(message: Message) -> None:
     await message.reply(response)
 
 
+def md_autofixer(text: str) -> str:
+    # In MarkdownV2, these characters must be escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
+    escape_chars = r"_[]()~>#+-=|{}.!"
+    # Use a backslash to escape special characters
+    return "".join("\\" + char if char in escape_chars else char for char in text)
+
+
 @dp.message(F.text)
 async def handle_message(message: Message) -> None:
     query = message.text
+    logging.info(f"Received query: {query}")
 
     documents = retrieve_documents(query, args.retriever_host)
     page_content = ""
@@ -89,21 +102,92 @@ async def handle_message(message: Message) -> None:
         page_content += f"{doc['page_content']}\n\n"
     logging.debug(f"Documents: {page_content}")
 
-    summary = await summarize_content_ollama(
-        context=page_content,
-        query=query,
-        generator_host=args.generator_host,
-        model_name=args.llm_name,
+    prompt = CONFIG["telegram"]["prompt_template"].format(
+        context=page_content, query=query
     )
-    if len(summary) > 4096:
-        await message.answer(summary[:4096])
-    else:
-        await message.answer(summary)
+    await ollama_request(message, prompt, args.generator_host, args.llm_name, bot)
+
+
+async def generate(
+    payload: Dict[str, Any], host: str
+) -> AsyncGenerator[Dict[str, Any], Dict[str, Any]]:
+    async with aiohttp.ClientSession() as session:
+        async with session.post(host, json=payload) as response:
+            async for chunk in response.content:
+                if chunk and chunk.decode().strip():
+                    yield json.loads(chunk.decode().strip())
+
+
+async def ollama_request(
+    message: types.Message, prompt: str, host: str, model_name: str, bot: Bot
+) -> None:
+    try:
+        await bot.send_chat_action(message.chat.id, "typing")
+        full_response = ""
+        sent_message = None
+        last_sent_text = None
+        i = 0
+
+        payload = {
+            "model": model_name,
+            "stream": True,
+            "prompt": prompt,
+            "system": CONFIG["telegram"]["system_prompt"],
+            "options": {
+                "temperature": CONFIG["telegram"]["temperature"],
+                "repeat_penalty": CONFIG["telegram"]["repeat_penalty"],
+                "num_predict": 2048,
+            },
+        }
+        async for response_data in generate(payload, host):
+            if response_data.get("error"):
+                logging.error(f"Error from ollama: {response_data['error']}")
+                raise Exception(f"{response_data['error']}")
+
+            logging.debug(f"Response data: {response_data}")
+            chunk = response_data.get("response")
+            if chunk is None:
+                continue
+            full_response += chunk
+            full_response_stripped = full_response.strip()
+
+            # avoid Bad Request: message text is empty
+            if full_response_stripped == "":
+                continue
+
+            if i == 5:
+                if sent_message:
+                    if last_sent_text != full_response_stripped:
+                        await bot.edit_message_text(
+                            chat_id=message.chat.id,
+                            message_id=sent_message.message_id,
+                            text=md_autofixer(full_response_stripped),
+                            parse_mode=ParseMode.MARKDOWN_V2,
+                        )
+                        last_sent_text = full_response_stripped
+                else:
+                    sent_message = await bot.send_message(
+                        chat_id=message.chat.id,
+                        text=md_autofixer(full_response_stripped),
+                        reply_to_message_id=message.message_id,
+                        parse_mode=ParseMode.MARKDOWN_V2,
+                    )
+                    last_sent_text = full_response_stripped
+                i = 0
+            i += 1
+    except Exception as e:
+        logging.error(f"Error occurred: {e}")
+        await bot.send_message(
+            chat_id=message.chat.id,
+            text=md_autofixer(
+                f"""Произошла ошибка. Передайте администратору.\n```\n{e}\n```"""
+            ),
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
 
 
 async def main() -> None:
-    bot = Bot(args.token)
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, skip_update=True)
 
 
 if __name__ == "__main__":
