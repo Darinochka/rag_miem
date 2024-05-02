@@ -6,26 +6,32 @@ import requests
 import json
 from time import sleep
 import openai
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Optional
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-SYSTEM_PROMPTS = {
-    "/saiga-llama3-8b-q4/model-q4_K.gguf": "Ты — Сайга, русскоязычный автоматический ассистент. Ты разговариваешь с людьми и помогаешь им.",
-}
-
 
 async def summarize_content_yandex_gpt(
-    prompt: str, model_name: str, temperature: float, folder_id: str, iam_token: str
+    prompt: str,
+    system_prompt: Optional[str],
+    model_name: str,
+    temperature: float,
+    folder_id: str,
+    iam_token: str,
 ) -> str:
     logging.info("Starting summarization with Yandex GPT")
     sleep(20)  # yandeggpt не любит слишком частые запросы
 
-    messages = [
-        {"role": "system", "text": prompt},
-    ]
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+    else:
+        messages = [{"role": "user", "content": prompt}]
+
     data = {
         "modelUri": f"gpt://{folder_id}/{model_name}/latest",
         "completionOptions": {
@@ -54,18 +60,24 @@ async def summarize_content_yandex_gpt(
 
 async def summarize_content_openai(
     prompt: str,
+    system_prompt: Optional[str],
     client: openai.AsyncOpenAI,
     model_name: str,
     temperature: float,
     repeat_penalty: float,
 ) -> str:
     logging.info("Starting summarization with OpenAI")
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+    else:
+        messages = [{"role": "user", "content": prompt}]
+
     completion = await client.chat.completions.create(
         model=model_name,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPTS[model_name]},
-            {"role": "user", "content": prompt},
-        ],
+        messages=messages,
         temperature=temperature,
         repeat_penalty=repeat_penalty,
     )
@@ -76,21 +88,24 @@ async def summarize_content_openai(
 
 async def summarize_content_ollama(
     prompt: str,
+    system_prompt: Optional[str],
     generator_host: str,
     model_name: str,
     temperature: float,
     repeat_penalty: float,
 ) -> str:
     logging.info("Starting summarization with ollama")
-    response = requests.post(
-        generator_host,
-        json={
-            "model": model_name,
-            "stream": False,
-            "prompt": prompt,
-            "options": {"temperature": temperature, "repeat_penalty": repeat_penalty},
-        },
-    )
+
+    json_data = {
+        "model": model_name,
+        "stream": False,
+        "prompt": prompt,
+        "options": {"temperature": temperature, "repeat_penalty": repeat_penalty},
+    }
+    if system_prompt is not None:
+        json_data["system"] = system_prompt
+
+    response = requests.post(generator_host, json=json_data)
     logging.debug(f"Summary from ollama model: {response.json()['response']}")
     logging.info("Summary was generated successfully")
     return response.json()["response"]
@@ -98,6 +113,7 @@ async def summarize_content_ollama(
 
 async def summarize_content_gigachat(
     prompt: str,
+    system_prompt: Optional[str],
     model_name: str,
     temperature: float,
     repeat_penalty: float,
@@ -105,11 +121,18 @@ async def summarize_content_gigachat(
 ) -> str:
     logging.info("Starting summarization with gigachat")
     url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+    else:
+        messages = [{"role": "user", "content": prompt}]
 
     payload = json.dumps(
         {
             "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": temperature,
             "repetition_penalty": repeat_penalty,
         }
@@ -145,6 +168,7 @@ async def read_csv_and_generate_prompts(
 
 async def create_tasks(
     prompts: List[Tuple[Dict[str, Any], str]],
+    system_prompt: Optional[str],
     model_name: str,
     host: str,
     model_type: str,
@@ -153,14 +177,28 @@ async def create_tasks(
     tasks = []
     for _, prompt in prompts:
         if model_type == "ollama":
-            tasks.append(summarize_content_ollama(prompt, host, model_name, **kwargs))
+            tasks.append(
+                summarize_content_ollama(
+                    prompt, system_prompt, host, model_name, **kwargs
+                )
+            )
         elif model_type == "yandex_gpt":
-            tasks.append(summarize_content_yandex_gpt(prompt, model_name, **kwargs))
+            tasks.append(
+                summarize_content_yandex_gpt(
+                    prompt, system_prompt, model_name, **kwargs
+                )
+            )
         elif model_type == "gigachat":
-            tasks.append(summarize_content_gigachat(prompt, model_name, **kwargs))
+            tasks.append(
+                summarize_content_gigachat(prompt, system_prompt, model_name, **kwargs)
+            )
         elif model_type == "openai":
             client = openai.AsyncOpenAI(base_url=host, api_key=kwargs["token"])
-            tasks.append(summarize_content_openai(prompt, client, model_name, **kwargs))
+            tasks.append(
+                summarize_content_openai(
+                    prompt, system_prompt, client, model_name, **kwargs
+                )
+            )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
     return tasks
@@ -203,6 +241,7 @@ async def process_csv(
     input_filename: str,
     output_filename: str,
     prompt_template: str,
+    system_prompt: Optional[str],
     model_name: str,
     host: str,
     temperature: float,
@@ -214,6 +253,7 @@ async def process_csv(
     prompts = await read_csv_and_generate_prompts(input_filename, prompt_template)
     tasks = await create_tasks(
         prompts,
+        system_prompt,
         model_name,
         host,
         model_type,
@@ -249,6 +289,12 @@ def main() -> None:
         required=True,
         type=str,
         help="Template for prompt creation",
+    )
+    parser.add_argument(
+        "--system_prompt",
+        type=str,
+        default=None,
+        help="System prompt for the model",
     )
     parser.add_argument(
         "--model_name", required=True, type=str, help="Model name for LLM"
@@ -288,6 +334,7 @@ def main() -> None:
             args.input_filename,
             args.output_filename,
             args.prompt_template,
+            args.system_prompt,
             args.model_name,
             args.host,
             args.temperature,
