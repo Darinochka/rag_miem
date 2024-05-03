@@ -14,9 +14,10 @@ import aiogram.types as types
 import aiohttp
 import json
 from typing import Dict, AsyncGenerator
+from src.utils.llm_test.llm_answer import summarize_content_ollama
 
 logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 dp = Dispatcher()
@@ -33,31 +34,6 @@ def retrieve_documents(query: str, retriever_host: str) -> Any:
     res_json = response.json()
     logging.info("Documents were retrieved successfully")
     return res_json
-
-
-async def summarize_content_ollama(
-    context: str, query: str, generator_host: str, model_name: str
-) -> Any:
-    logging.info("Starting summarization with ollama")
-    prompt = CONFIG["telegram"]["prompt_template"].format(context=context, query=query)
-    logging.debug(f"Prompt for ollama model: {prompt}")
-    response = requests.post(
-        generator_host,
-        json={
-            "model": model_name,
-            "stream": False,
-            "prompt": prompt,
-            "system": CONFIG["telegram"]["system_prompt"],
-            "options": {
-                "temperature": CONFIG["telegram"]["temperature"],
-                "repeat_penalty": CONFIG["telegram"]["repeat_penalty"],
-                "num_predict": 2048,
-            },
-        },
-    )
-    logging.debug(f"Summary from ollama model: {response.json()['response']}")
-    logging.info("Summary was generated successfully")
-    return response.json()["response"]
 
 
 @dp.message(CommandStart())
@@ -91,21 +67,53 @@ def md_autofixer(text: str) -> str:
     return "".join("\\" + char if char in escape_chars else char for char in text)
 
 
+async def get_class(query: str) -> int:
+    """
+    Получает класс запроса от модели, используя промпт темплейт из конфига, где
+    0 - запрос относится к учебному процессу, а
+    1 - запрос на другие темы
+    """
+    logging.info(f"Starting to predict class for query: {query}")
+    prompt = CONFIG["telegram"]["class_prompt_template"].format(question=query)
+    predict_class = await summarize_content_ollama(
+        prompt=prompt,
+        system_prompt=" ",
+        generator_host=args.generator_host,
+        model_name=args.llm_name,
+        temperature=0.0,
+        repeat_penalty=1.0,
+        num_predict=1,
+    )
+    if predict_class == "0" or predict_class == "1":
+        logging.info(f"Predicted class for query: {query} is {predict_class}")
+        return int(predict_class)
+    else:
+        logging.warning(f"Failed to predict class for query: {query}")
+        # возвращаем 0, если не удалось определить класс
+        return 0
+
+
 @dp.message(F.text)
 async def handle_message(message: Message) -> None:
     query = message.text
     logging.info(f"Received query: {query}")
+    class_query = await get_class(query)
+    if class_query == 1:
+        logging.info("Query is not related to study process")
+        await message.answer(
+            "Я не могу ответить на этот вопрос, поскольку он не относится к учебному процессу."
+        )
+    else:
+        documents = retrieve_documents(query, args.retriever_host)
+        page_content = ""
+        for doc in documents["output"]:
+            page_content += f"{doc['page_content']}\n\n"
+        logging.debug(f"Documents: {page_content}")
 
-    documents = retrieve_documents(query, args.retriever_host)
-    page_content = ""
-    for doc in documents["output"]:
-        page_content += f"{doc['page_content']}\n\n"
-    logging.debug(f"Documents: {page_content}")
-
-    prompt = CONFIG["telegram"]["prompt_template"].format(
-        context=page_content, query=query
-    )
-    await ollama_request(message, prompt, args.generator_host, args.llm_name, bot)
+        prompt = CONFIG["telegram"]["prompt_template"].format(
+            context=page_content, query=query
+        )
+        await ollama_request(message, prompt, args.generator_host, args.llm_name, bot)
 
 
 async def generate(
@@ -175,6 +183,7 @@ async def ollama_request(
                     last_sent_text = full_response_stripped
                 i = 0
             i += 1
+        logging.info(f"Result from model: {full_response_stripped}")
     except Exception as e:
         logging.error(f"Error occurred: {e}")
         await bot.send_message(
