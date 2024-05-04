@@ -93,8 +93,6 @@ async def summarize_content_ollama(
     system_prompt: Optional[str],
     generator_host: str,
     model_name: str,
-    temperature: float,
-    repeat_penalty: float,
     **kwargs: Any,
 ) -> str:
     logging.info("Starting summarization with ollama")
@@ -103,7 +101,7 @@ async def summarize_content_ollama(
         "model": model_name,
         "stream": False,
         "prompt": prompt,
-        "options": {"temperature": temperature, "repeat_penalty": repeat_penalty},
+        "options": kwargs,
     }
     if system_prompt is not None:
         json_data["system"] = system_prompt
