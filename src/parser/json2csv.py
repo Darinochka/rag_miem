@@ -6,10 +6,10 @@ import json
 def main(input_filename: str, output_filename: str) -> None:
     with open(input_filename, "r") as f, open(output_filename, "w") as fw:
         writer = csv.writer(fw)
-        keys = json.loads(f.readline())
-        writer.writerow(keys)
-        for line in f.readlines():
+        for i, line in enumerate(f.readlines()):
             data = json.loads(line)
+            if i == 0:
+                writer.writerow(data)
             data["text"] = f'{data["title"]}. {data["text"]}'
             writer.writerow(data.values())
 
