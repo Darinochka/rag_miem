@@ -15,6 +15,7 @@ import aiohttp
 import json
 from typing import Dict, AsyncGenerator
 from src.utils.llm_test.llm_answer import summarize_content_ollama
+from telegram.helpers import escape_markdown
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -24,6 +25,23 @@ dp = Dispatcher()
 args = TelegramArgs()
 bot = Bot(args.token)
 CONFIG = toml.load("src/config.toml")
+
+
+def rewrite_request(text: str) -> str:
+    # Функция для замены с учетом регистра
+    def replace_func(match: re.Match[str]) -> str:
+        abbr = match.group(0)
+        full_text = CONFIG["rewrite_abrr"][
+            abbr.upper()
+        ]  # Подставляем полный текст для аббревиатуры
+        return f"{full_text} ({abbr})"
+
+    # Регулярное выражение для поиска аббревиатур, игнорирующее регистр, с границами слов
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(abbr) for abbr in CONFIG["rewrite_abrr"]) + r")\b",
+        re.IGNORECASE,
+    )
+    return pattern.sub(replace_func, text)
 
 
 def retrieve_documents(query: str, retriever_host: str) -> Any:
@@ -60,11 +78,30 @@ async def which_building(message: Message) -> None:
     await message.reply(response)
 
 
-def md_autofixer(text: str) -> str:
-    # In MarkdownV2, these characters must be escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
-    escape_chars = r"_[]()~>#+-=|{}.!"
-    # Use a backslash to escape special characters
-    return "".join("\\" + char if char in escape_chars else char for char in text)
+async def get_class(query: str) -> int:
+    """
+    Получает класс запроса от модели, используя промпт темплейт из конфига, где
+    0 - запрос относится к учебному процессу, а
+    1 - запрос на другие темы
+    """
+    logging.info(f"Starting to predict class for query: {query}")
+    prompt = CONFIG["telegram"]["class_prompt_template"].format(question=query)
+    predict_class = await summarize_content_ollama(
+        prompt=prompt,
+        system_prompt=" ",
+        generator_host=args.generator_host,
+        model_name=args.llm_name,
+        temperature=0.0,
+        repeat_penalty=1.0,
+        num_predict=1,
+    )
+    if predict_class == "0" or predict_class == "1":
+        logging.info(f"Predicted class for query: {query} is {predict_class}")
+        return int(predict_class)
+    else:
+        logging.warning(f"Failed to predict class for query: {query}")
+        # возвращаем 0, если не удалось определить класс
+        return 0
 
 
 async def get_class(query: str) -> int:
@@ -95,7 +132,7 @@ async def get_class(query: str) -> int:
 
 @dp.message(F.text)
 async def handle_message(message: Message) -> None:
-    query = message.text
+    query = rewrite_request(message.text)
     logging.info(f"Received query: {query}")
     class_query = await get_class(query)
     if class_query == 1:
@@ -169,14 +206,14 @@ async def ollama_request(
                         await bot.edit_message_text(
                             chat_id=message.chat.id,
                             message_id=sent_message.message_id,
-                            text=md_autofixer(full_response_stripped),
+                            text=escape_markdown(full_response_stripped, version=2),
                             parse_mode=ParseMode.MARKDOWN_V2,
                         )
                         last_sent_text = full_response_stripped
                 else:
                     sent_message = await bot.send_message(
                         chat_id=message.chat.id,
-                        text=md_autofixer(full_response_stripped),
+                        text=escape_markdown(full_response_stripped, version=2),
                         reply_to_message_id=message.message_id,
                         parse_mode=ParseMode.MARKDOWN_V2,
                     )
@@ -188,8 +225,9 @@ async def ollama_request(
         logging.error(f"Error occurred: {e}")
         await bot.send_message(
             chat_id=message.chat.id,
-            text=md_autofixer(
-                f"""Произошла ошибка. Передайте администратору.\n```\n{e}\n```"""
+            text=escape_markdown(
+                f"""Произошла ошибка. Передайте администратору.\n```\n{e}\n```""",
+                version=2,
             ),
             parse_mode=ParseMode.MARKDOWN_V2,
         )
