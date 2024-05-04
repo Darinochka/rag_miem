@@ -3,7 +3,7 @@ import pandas as pd
 
 
 def cut_length(text: str, max_len: int) -> str:
-    if len(text) > max_len:
+    if isinstance(text, str) and len(text) > max_len:
         return text[:max_len]
     return text
 
@@ -17,6 +17,7 @@ def main() -> None:
 
     data = pd.read_csv(args.input_filename)
     data["text"] = data["text"].apply(cut_length, args=(args.max_len,))
+    data = data.dropna(subset=["text"])
     data.to_csv(args.output_filename, index=False)
 
 
