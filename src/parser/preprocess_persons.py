@@ -18,6 +18,16 @@ def main() -> None:
     data = pd.read_csv(args.input_filename)
     data["text"] = data["text"].apply(cut_length, args=(args.max_len,))
     data = data.dropna(subset=["text"])
+    data = data.drop_duplicates(subset=["source"], keep="last")
+    data["text"] = (
+        data["text"]
+        .apply(
+            str.replace,
+            "Московский институт электроники и математики им. А.Н. Тихонова",
+            "",
+        )
+        .str.strip()
+    )
     data.to_csv(args.output_filename, index=False)
 
 
