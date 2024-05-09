@@ -13,7 +13,7 @@ from aiogram.enums import ParseMode
 import aiogram.types as types
 import aiohttp
 import json
-from typing import Dict, AsyncGenerator
+from typing import Dict, AsyncGenerator, Optional
 from src.utils.llm_test.llm_answer import summarize_content_ollama
 from telegram.helpers import escape_markdown
 
@@ -34,14 +34,14 @@ def rewrite_request(text: str) -> str:
         full_text = CONFIG["rewrite_abrr"][
             abbr.upper()
         ]  # Подставляем полный текст для аббревиатуры
-        return f"{full_text} ({abbr})"
+        return full_text
 
     # Регулярное выражение для поиска аббревиатур, игнорирующее регистр, с границами слов
     pattern = re.compile(
         r"\b(" + "|".join(re.escape(abbr) for abbr in CONFIG["rewrite_abrr"]) + r")\b",
         re.IGNORECASE,
     )
-    return pattern.sub(replace_func, text)
+    return pattern.sub(replace_func, text).lower()
 
 
 def retrieve_documents(query: str, retriever_host: str) -> Any:
@@ -51,7 +51,7 @@ def retrieve_documents(query: str, retriever_host: str) -> Any:
     response = requests.post(host_url, json={"input": query})
     res_json = response.json()
     logging.info("Documents were retrieved successfully")
-    return res_json
+    return res_json["output"]
 
 
 @dp.message(CommandStart())
@@ -78,14 +78,15 @@ async def which_building(message: Message) -> None:
     await message.reply(response)
 
 
-async def get_class(query: str) -> int:
+async def get_class_study(query: str) -> int:
     """
-    Получает класс запроса от модели, используя промпт темплейт из конфига, где
+    Определяет, относится ли запрос к учебному процессу.
+    Возвращает класс запроса от модели, используя промпт темплейт из конфига, где
     0 - запрос относится к учебному процессу, а
     1 - запрос на другие темы
     """
     logging.info(f"Starting to predict class for query: {query}")
-    prompt = CONFIG["telegram"]["class_prompt_template"].format(question=query)
+    prompt = CONFIG["telegram"]["study_prompt_template"].format(question=query)
     predict_class = await summarize_content_ollama(
         prompt=prompt,
         system_prompt=" ",
@@ -104,14 +105,16 @@ async def get_class(query: str) -> int:
         return 0
 
 
-async def get_class(query: str) -> int:
+async def get_class_retriever(query: str) -> int:
     """
-    Получает класс запроса от модели, используя промпт темплейт из конфига, где
-    0 - запрос относится к учебному процессу, а
-    1 - запрос на другие темы
+    Определяет, относится ли запрос к вопросу про контакты или нет,
+    чтобы роутить к разным ретриверам.
+    Возвращает класс запроса от модели, используя промпт темплейт из конфига, где
+    1 - запрос относится к контактам, а
+    0 - запрос не относится к контактам
     """
-    logging.info(f"Starting to predict class for query: {query}")
-    prompt = CONFIG["telegram"]["class_prompt_template"].format(question=query)
+    logging.info(f"Starting to predict retriever class for query: {query}")
+    prompt = CONFIG["telegram"]["person_prompt_template"].format(question=query)
     predict_class = await summarize_content_ollama(
         prompt=prompt,
         system_prompt=" ",
@@ -122,28 +125,49 @@ async def get_class(query: str) -> int:
         num_predict=1,
     )
     if predict_class == "0" or predict_class == "1":
-        logging.info(f"Predicted class for query: {query} is {predict_class}")
+        logging.info(f"Predicted retriever class for query: {query} is {predict_class}")
         return int(predict_class)
     else:
-        logging.warning(f"Failed to predict class for query: {query}")
+        logging.warning(f"Failed to predict retriever class for query: {query}")
         # возвращаем 0, если не удалось определить класс
         return 0
+
+
+def write_logs(query: str, class_query: int, class_retriever: Optional[int]) -> None:
+    with open("/logs/logs.jsonl", "a") as f:
+        json.dump(
+            {
+                "query": query,
+                "class_query": class_query,
+                "class_retriever": class_retriever,
+            },
+            f,
+            ensure_ascii=False,
+        )
+        f.write("\n")
 
 
 @dp.message(F.text)
 async def handle_message(message: Message) -> None:
     query = rewrite_request(message.text)
     logging.info(f"Received query: {query}")
-    class_query = await get_class(query)
+    # class_query = await get_class_study(query)
+    class_query = 0
     if class_query == 1:
+        write_logs(query, class_query, None)
         logging.info("Query is not related to study process")
         await message.answer(
             "Я не могу ответить на этот вопрос, поскольку он не относится к учебному процессу."
         )
     else:
-        documents = retrieve_documents(query, args.retriever_host)
+        class_retriever = await get_class_retriever(query)
+        write_logs(query, class_query, class_retriever)
+        if class_retriever == 1:
+            documents = retrieve_documents(query, args.retriever_person_host)[:2]
+        else:
+            documents = retrieve_documents(query, args.retriever_host)
         page_content = ""
-        for doc in documents["output"]:
+        for doc in documents:
             page_content += f"{doc['page_content']}\n\n"
         logging.debug(f"Documents: {page_content}")
 
