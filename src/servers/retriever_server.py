@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from langserve import add_routes
-from src.utils.retriever import create_documents, Retriever
+from src.utils.retriever import create_documents, Retriever, RetrieverBM25
 from src.utils.base_models import RetrieverArgs
 import toml
 from typing import Dict, Any, Optional
@@ -16,15 +16,18 @@ def load_config() -> Dict[str, Any]:
 
 
 def initialize_components(
-    config: Dict[str, Any], db_load_folder: Optional[str] = None
+    config: Dict[str, Any], bm25: bool, db_load_folder: Optional[str] = None
 ) -> Retriever:
-    if db_load_folder is None:
+    args = RetrieverArgs(**config["retriever"])
+    if db_load_folder is None or args.ensemble or bm25:
         documents = create_documents(**config["documents"])
     else:
         documents = None
 
-    args = RetrieverArgs(**config["retriever"])
-    return Retriever(documents=documents, args=args, db_load_folder=db_load_folder)
+    if bm25:
+        return RetrieverBM25(documents)
+    else:
+        return Retriever(documents=documents, args=args, db_load_folder=db_load_folder)
 
 
 def create_app(retriever: BaseRetriever) -> FastAPI:
@@ -51,13 +54,19 @@ def parse_args() -> Namespace:
     parser.add_argument(
         "--db-save-folder", type=str, default=None, help="Folder to save FAISS DB to"
     )
+    parser.add_argument(
+        "--bm25",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use BM25 instead of FAISS for retrieval",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     config = load_config()
-    retriever = initialize_components(config, args.db_load_folder)
+    retriever = initialize_components(config, args.bm25, args.db_load_folder)
 
     if args.db_save_folder is not None:
         retriever.save_db(args.db_save_folder)
