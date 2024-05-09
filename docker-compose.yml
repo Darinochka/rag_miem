@@ -6,6 +6,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    volumes:
+      - ./data/logs:/logs
     networks:
       - intra
     command: python3 -m src.servers.telegram_server
@@ -18,9 +20,9 @@ services:
     ports:
       - 8000:8000
     volumes:
-      - ./data/ready:/data
+      - ./data/popatruc_wo_qa:/data
       - ~/.cache/huggingface/hub:/.cache/huggingface/hub
-      - ./data/faiss_indexes:/faiss_indexes
+      - ./data/faiss_indexes_popatcus_all_wo_qa:/faiss_indexes
     environment:
       - HF_HOME=/.cache/huggingface/hub
       - HUGGINGFACE_HUB_CACHE=/.cache/huggingface/hub
@@ -28,5 +30,21 @@ services:
       - intra
     command: python3 -m src.servers.retriever_server --port 8000 --db-load-folder /faiss_indexes
 
+  retriever-persons:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 8001:8001
+    volumes:
+      - ./data/test:/data
+      - ~/.cache/huggingface/hub:/.cache/huggingface/hub
+      - ./data/faiss_indexes_persons:/faiss_indexes
+    environment:
+      - HF_HOME=/.cache/huggingface/hub
+      - HUGGINGFACE_HUB_CACHE=/.cache/huggingface/hub
+    networks:
+      - intra
+    command: python3 -m src.servers.retriever_server --port 8001 --db-load-folder /faiss_indexes
 networks:
   intra:
