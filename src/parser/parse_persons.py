@@ -12,9 +12,9 @@ def parse_links(input_file: str, output_file: str) -> None:
         "g-ul g-list small",
         "g-ul g-list",
         "g-ul g-list small person-employment-addition",
-        "main-list large main-list-language-knowledge-level",
+        # "main-list large main-list-language-knowledge-level",
         "main-list large",
-        "main-list person-extra-indent",
+        # "main-list person-extra-indent",
     ]
 
     valid_url_patterns = [
@@ -43,10 +43,16 @@ def parse_links(input_file: str, output_file: str) -> None:
             extracted_texts = []
             for target_class in target_classes:
                 elements = soup.find_all(class_=target_class)
-                for element in elements:
-                    extracted_texts.append(element.get_text(" ", strip=True))
+                if target_class == "g-ul g-list small" or target_class == "g-ul g-list":
+                    for element in elements:
+                        li_elements = element.find_all("li")
+                        for li in li_elements:
+                            extracted_texts.append(li.get_text(" ", strip=True))
+                else:
+                    for element in elements:
+                        extracted_texts.append(element.get_text(" ", strip=True))
 
-            data.append({"source": url, "text": " ".join(extracted_texts)})
+            data.append({"source": url, "text": "\n".join(extracted_texts)})
 
     df = pd.DataFrame(data)
     df.to_csv(output_file, index=False)
