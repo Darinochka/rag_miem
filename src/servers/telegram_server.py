@@ -105,7 +105,28 @@ async def get_class_study(query: str) -> int:
         return 0
 
 
-async def get_class_retriever(query: str) -> int:
+async def get_class_retriever_by_bert(query: str) -> int:
+    """
+    Определяет, относится ли запрос к вопросу про контакты или нет,
+    чтобы роутить к разным ретриверам.
+    Возвращает класс запроса от модели, где
+    1 - запрос относится к контактам, а
+    0 - запрос не относится к контактам
+    """
+    logging.info(f"Starting to predict class for query: {query}")
+    response = requests.post(f"{args.study_classifier_host}?sentence={query}")
+    if response.status_code != 200:
+        logging.error(
+            f"Failed to get response from study classifier: {response.status_code}"
+        )
+        return 0
+
+    label = int(response.json()[0]["label"][-1])
+    logging.info(f"Predicted class for query: {query} is {label}")
+    return label
+
+
+async def get_class_retriever_by_llm(query: str) -> int:
     """
     Определяет, относится ли запрос к вопросу про контакты или нет,
     чтобы роутить к разным ретриверам.
@@ -151,8 +172,7 @@ def write_logs(query: str, class_query: int, class_retriever: Optional[int]) -> 
 async def handle_message(message: Message) -> None:
     query = rewrite_request(message.text)
     logging.info(f"Received query: {query}")
-    # class_query = await get_class_study(query)
-    class_query = 0
+    class_query = await get_class_study(query)
     if class_query == 1:
         write_logs(query, class_query, None)
         logging.info("Query is not related to study process")
@@ -160,7 +180,7 @@ async def handle_message(message: Message) -> None:
             "Я не могу ответить на этот вопрос, поскольку он не относится к учебному процессу."
         )
     else:
-        class_retriever = await get_class_retriever(query)
+        class_retriever = await get_class_retriever_by_bert(query)
         write_logs(query, class_query, class_retriever)
         if class_retriever == 1:
             documents = retrieve_documents(query, args.retriever_person_host)[:2]
