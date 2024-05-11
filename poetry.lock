@@ -270,6 +270,20 @@ tests-mypy = ["mypy (>=1.6)", "pytest-mypy-plugins"]
 tests-no-zope = ["attrs[tests-mypy]", "cloudpickle", "hypothesis", "pympler", "pytest (>=4.3.0)", "pytest-xdist[psutil]"]
 
 [[package]]
+name = "babel"
+version = "2.15.0"
+description = "Internationalization utilities"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "Babel-2.15.0-py3-none-any.whl", hash = "sha256:08706bdad8d0a3413266ab61bd6c34d0c28d6e1e7badf40a2cebe67644e2e1fb"},
+    {file = "babel-2.15.0.tar.gz", hash = "sha256:8daf0e265d05768bc6c7a314cf1321e9a123afc328cc635c18622a2f30a04413"},
+]
+
+[package.extras]
+dev = ["freezegun (>=1.0,<2.0)", "pytest (>=6.0)", "pytest-cov"]
+
+[[package]]
 name = "backoff"
 version = "2.2.1"
 description = "Function decoration for backoff and retry"
@@ -683,17 +697,17 @@ test = ["pytest"]
 
 [[package]]
 name = "courlan"
-version = "1.0.0"
+version = "1.1.0"
 description = "Clean, filter and sample URLs to optimize data collection – includes spam, content type and language filters."
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "courlan-1.0.0-py3-none-any.whl", hash = "sha256:74ceed951343880b8488ee4296d1bbc76dbae7287aa6dc115299a5b157e3b9fb"},
-    {file = "courlan-1.0.0.tar.gz", hash = "sha256:3c35511c36525cb2f941cd6709b7a3a742ed95f0b9e56c97eec0c16fdc035183"},
+    {file = "courlan-1.1.0-py3-none-any.whl", hash = "sha256:88354c1e50fde84890c13f58924a5ecc5c0527dcf3eb36e80564fe68e330bb03"},
+    {file = "courlan-1.1.0.tar.gz", hash = "sha256:d706684334f18be4ada1fbd57f2680adf0036648f6d840852f7a4822d3adfd8d"},
 ]
 
 [package.dependencies]
-langcodes = ">=3.3.0"
+babel = ">=2.11.0"
 tld = {version = ">=0.13", markers = "python_version >= \"3.7\""}
 urllib3 = {version = ">=1.26,<3", markers = "python_version >= \"3.7\""}
 
@@ -1506,13 +1520,13 @@ files = [
 
 [[package]]
 name = "htmldate"
-version = "1.8.0"
+version = "1.8.1"
 description = "Fast and robust extraction of original and updated publication dates from URLs and web pages."
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "htmldate-1.8.0-py3-none-any.whl", hash = "sha256:5e16c31b50b2ee1991120e60c095fe716ce041882213dfb3e8a4e4c7286bcc4b"},
-    {file = "htmldate-1.8.0.tar.gz", hash = "sha256:f94c7d017f42a1cf422e5a7c5ef10cacbae276886314f27a986464627f30bb15"},
+    {file = "htmldate-1.8.1-py3-none-any.whl", hash = "sha256:b1209dedfa7bc9bb4d0b812a3f0983ea5d39f1bdfe21745659ad26af4f8b7f32"},
+    {file = "htmldate-1.8.1.tar.gz", hash = "sha256:caf1686cf75c61dd1f061ede5d7a46e759b15d5f9987cd8e13c8c4237511263d"},
 ]
 
 [package.dependencies]
@@ -1987,20 +2001,6 @@ langchain-core = ">=0.1.28,<0.2.0"
 
 [package.extras]
 extended-testing = ["lxml (>=5.1.0,<6.0.0)"]
-
-[[package]]
-name = "langcodes"
-version = "3.3.0"
-description = "Tools for labeling human languages with IETF language tags"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "langcodes-3.3.0-py3-none-any.whl", hash = "sha256:4d89fc9acb6e9c8fdef70bcdf376113a3db09b67285d9e1d534de6d8818e7e69"},
-    {file = "langcodes-3.3.0.tar.gz", hash = "sha256:794d07d5a28781231ac335a1561b8442f8648ca07cd518310aeb45d6f0807ef6"},
-]
-
-[package.extras]
-data = ["language-data (>=1.1,<2.0)"]
 
 [[package]]
 name = "langdetect"
@@ -3833,6 +3833,23 @@ tiktoken = "*"
 all = ["sentence-transformers"]
 
 [[package]]
+name = "rank-bm25"
+version = "0.2.2"
+description = "Various BM25 algorithms for document ranking"
+optional = false
+python-versions = "*"
+files = [
+    {file = "rank_bm25-0.2.2-py3-none-any.whl", hash = "sha256:7bd4a95571adadfc271746fa146a4bcfd89c0cf731e49c3d1ad863290adbe8ae"},
+    {file = "rank_bm25-0.2.2.tar.gz", hash = "sha256:096ccef76f8188563419aaf384a02f0ea459503fdf77901378d4fd9d87e5e51d"},
+]
+
+[package.dependencies]
+numpy = "*"
+
+[package.extras]
+dev = ["pytest"]
+
+[[package]]
 name = "rapidfuzz"
 version = "3.8.1"
 description = "rapid fuzzy string matching"
@@ -5060,24 +5077,24 @@ telegram = ["requests"]
 
 [[package]]
 name = "trafilatura"
-version = "1.8.1"
+version = "1.9.0"
 description = "Python package and command-line tool designed to gather text on the Web, includes all necessary discovery and text processing components to perform web crawling, downloads, scraping, and extraction of main texts, metadata and comments."
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "trafilatura-1.8.1-py3-none-any.whl", hash = "sha256:2bed0ce01375fbd397893baad39cef9c202a44d74665ac65ee912377bb46b28a"},
-    {file = "trafilatura-1.8.1.tar.gz", hash = "sha256:6b878dfdbd5c5dfb55d0f8307f2b7dc15ac3458054f74861ff98a172f5e38720"},
+    {file = "trafilatura-1.9.0-py3-none-any.whl", hash = "sha256:8ea09de226c4eae25685f65b2cf56de47260d5c858ed3a8a0bc9c3ddd0841344"},
+    {file = "trafilatura-1.9.0.tar.gz", hash = "sha256:e6833d29ab8a13ed853937d7c91e6868bc62efbe10214ac2b106436dd23d1412"},
 ]
 
 [package.dependencies]
 brotli = {version = "*", optional = true, markers = "extra == \"all\""}
 certifi = "*"
 charset-normalizer = {version = ">=3.2.0", markers = "python_version >= \"3.7\""}
-courlan = ">=1.0.0"
+courlan = ">=1.1.0"
 faust-cchardet = {version = ">=2.1.19", optional = true, markers = "python_version >= \"3.11\" and extra == \"all\""}
 htmldate = [
-    {version = ">=1.8.0"},
-    {version = ">=1.8.0", extras = ["speed"], optional = true, markers = "extra == \"all\""},
+    {version = ">=1.8.1"},
+    {version = ">=1.8.1", extras = ["speed"], optional = true, markers = "extra == \"all\""},
 ]
 justext = ">=3.0.0"
 lxml = {version = ">=4.9.4,<5.2.0", markers = "platform_system != \"Darwin\" or python_version > \"3.8\""}
@@ -5086,7 +5103,7 @@ pycurl = {version = ">=7.45.3", optional = true, markers = "extra == \"all\""}
 urllib3 = {version = ">=1.26,<3", markers = "python_version >= \"3.7\""}
 
 [package.extras]
-all = ["brotli", "cchardet (>=2.1.7)", "faust-cchardet (>=2.1.19)", "htmldate[speed] (>=1.8.0)", "py3langid (>=0.2.2)", "pycurl (>=7.45.3)"]
+all = ["brotli", "cchardet (>=2.1.7)", "faust-cchardet (>=2.1.19)", "htmldate[speed] (>=1.8.1)", "py3langid (>=0.2.2)", "pycurl (>=7.45.3)"]
 gui = ["Gooey (>=1.0.1)"]
 
 [[package]]
@@ -5803,4 +5820,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "c5eb1a9d8c56f5b67b01fd1677c483dca94677c71f0f3c6baf88f9f635f7a4d0"
+content-hash = "d879ed037ce70cdb44ac401abe12b0021494db9575217ac199ddb19879ef4ebf"
