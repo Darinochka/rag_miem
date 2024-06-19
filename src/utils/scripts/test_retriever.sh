@@ -1,7 +1,7 @@
 #!/bin/bash
 
-EMBEDS=("BAAI/bge-m3" "BAAI/bge-m3-unsupervised")
-CHUNK_SIZE=1000
+EMBEDS=("BAAI/bge-m3")
+CHUNK_SIZE=700
 CHUNK_OVERLAP=200
 RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 
@@ -13,14 +13,15 @@ for EMBED in "${EMBEDS[@]}"; do
 
     echo "Выполнение скрипта python"
 
-    python3 -m src.utils.retriever_test.retriever_documents \
+    python3 -m src.utils.retriever_test.retrieve_documents \
         --input_csv data/validation/test.csv \
-        --output_csv data/out_retriever/CS_"$CHUNK_SIZE"_CO_"$CHUNK_OVERLAP"_q_rerank/"$PART".csv \
+        --output_csv data/out_retriever/bge-m3_with_bm25.csv \
         --embedding_model $EMBED \
         --chunk_size $CHUNK_SIZE \
         --chunk_overlap $CHUNK_OVERLAP \
         --rerank_model $RERANKER_MODEL \
-        --folder data/ready
+        --folder data/ready \
+        --host http://localhost:8000/invoke
 
     echo "Обработка для $EMBED завершена"
 done
