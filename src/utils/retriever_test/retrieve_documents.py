@@ -84,7 +84,7 @@ def main() -> None:
     logging.info(
         f"Arguments parsed: {args} Creating documents and initializing Retriever."
     )
-    if not args.host:
+    if args.host is None:
         retriever_args = RetrieverArgs(
             embedding_model=args.embedding_model,
             rerank_model=args.rerank_model,
