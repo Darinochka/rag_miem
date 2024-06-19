@@ -14,7 +14,7 @@ volumes:
     - ~/.cache/huggingface/hub:/.cache/huggingface/hub
     - ./data/faiss_indexes_popatcus_all_wo_qa:/faiss_indexes
 ```
-Здесь ```/data/``` будет хранить файлы для обработки, если необходимо создать новую базу данных. Если такой необходимости нет, можно задать только ```/faiss_indexes``` где будет храниться база данных.
+Здесь ```/data/``` будет хранить файлы для обработки, если необходимо создать новую базу данных. Если такой необходимости нет, можно задать только ```/faiss_indexes``` где будет храниться база данных. Также необходимо скачать из Google Drive [faiss_infexes_persons](https://drive.google.com/drive/folders/1JUFq22joU9gVPi65put4gIhTeUh3Ca5y?usp=drive_link) и [faiss_infexes_popatcus_all_wo_qa](https://drive.google.com/drive/folders/16kbf9o-BLoxUwwnkcJ_0ZrkTsTygOPJm?usp=drive_link) в папку data.
 
 Папка для сканирования файлов связана с ```src/config.toml```. Поэтому при условии изменения папки ```/data```, необходимо поменять значение в ```[documents] folder```.
 
