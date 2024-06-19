@@ -16,6 +16,7 @@ import json
 from typing import Dict, AsyncGenerator, Optional
 from src.utils.llm_test.llm_answer import summarize_content_ollama
 from telegram.helpers import escape_markdown
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -25,6 +26,15 @@ dp = Dispatcher()
 args = TelegramArgs()
 bot = Bot(args.token)
 CONFIG = toml.load("src/config.toml")
+builder = ReplyKeyboardBuilder()
+builder.add(types.KeyboardButton(text="Кто академический руководитель ИВТ?"))
+builder.add(types.KeyboardButton(text="Как поступить в проектную школу?"))
+builder.add(types.KeyboardButton(text="Почему могут отчислить?"))
+builder.add(types.KeyboardButton(text="Что такое ПОПАТКУС?"))
+builder.add(types.KeyboardButton(text="Какие могут быть основания для апелляции?"))
+builder.add(types.KeyboardButton(text="Может ли преподаватель менять ПУД?"))
+builder.adjust(2)
+kb = builder.as_markup()
 
 
 def rewrite_request(text: str) -> str:
@@ -57,7 +67,7 @@ def retrieve_documents(query: str, retriever_host: str) -> Any:
 @dp.message(CommandStart())
 async def send_welcome(message: Message) -> None:
     welcome_text = CONFIG["telegram"]["welcome_text"]
-    await message.answer(welcome_text)
+    await message.answer(welcome_text, reply_markup=kb)
 
 
 @dp.message(Command("which_building"))
@@ -274,6 +284,7 @@ async def ollama_request(
                 version=2,
             ),
             parse_mode=ParseMode.MARKDOWN_V2,
+            reply_markup=kb,
         )
 
 
